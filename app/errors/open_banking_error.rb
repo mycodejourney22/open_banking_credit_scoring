@@ -1,0 +1,1 @@
+class OpenBankingError < StandardError; end

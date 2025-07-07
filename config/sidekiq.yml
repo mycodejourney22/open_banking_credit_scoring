@@ -1,0 +1,15 @@
+# config/sidekiq.yml
+:timeout: 25
+:verbose: true
+:concurrency: 10
+
+:queues:
+  - default
+  - critical
+  - mailers
+
+production:
+  :concurrency: 20
+  
+development:
+  :concurrency: 5

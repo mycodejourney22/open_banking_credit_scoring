@@ -1,0 +1,140 @@
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+  <p class="text-gray-600">Welcome back, <%= current_user.first_name %>!</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+  <!-- Credit Score Card -->
+  <div class="lg:col-span-1">
+    <%= render 'shared/credit_score_card', credit_score: @latest_credit_score %>
+  </div>
+  
+  <!-- Total Balance Card -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Balance</h3>
+    <div class="text-3xl font-bold text-green-600">
+      ₦<%= number_with_delimiter(@total_balance) %>
+    </div>
+    <p class="text-sm text-gray-600 mt-1">
+      Across <%= pluralize(@bank_connections.count, 'account') %>
+    </p>
+  </div>
+  
+  <!-- Quick Actions Card -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+    <div class="space-y-2">
+      <%= link_to "Connect Bank Account", new_bank_connection_path, class: "block w-full text-center px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50" %>
+      <%= link_to "Apply for Credit", new_credit_application_path, class: "block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" %>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Section -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <!-- Spending Trend Chart -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Monthly Spending Trend</h3>
+    <%= line_chart @monthly_spending, prefix: "₦", thousands: "," %>
+  </div>
+  
+  <!-- Spending by Category Chart -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Spending by Category</h3>
+    <%= pie_chart @spending_by_category, prefix: "₦", thousands: "," %>
+  </div>
+</div>
+
+<!-- Recent Transactions -->
+<div class="bg-white rounded-lg shadow-md">
+  <div class="px-6 py-4 border-b border-gray-200">
+    <h3 class="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+  </div>
+  
+  <% if @recent_transactions.any? %>
+    <div class="divide-y divide-gray-200">
+      <% @recent_transactions.each do |transaction| %>
+        <div class="px-6 py-4">
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <p class="text-sm font-medium text-gray-900">
+                <%= transaction.description %>
+              </p>
+              <p class="text-xs text-gray-500">
+                <%= transaction.transaction_date.strftime("%B %d, %Y") %> • 
+                <%= transaction.category.humanize %>
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="text-sm font-medium <%= transaction.credit? ? 'text-green-600' : 'text-red-600' %>">
+                <%= transaction.credit? ? '+' : '-' %>₦<%= number_with_delimiter(transaction.amount) %>
+              </p>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    
+    <div class="px-6 py-3 bg-gray-50 text-center">
+      <%= link_to "View All Transactions", bank_connections_path, class: "text-sm text-blue-600 hover:text-blue-800" %>
+    </div>
+  <% else %>
+    <div class="px-6 py-8 text-center text-gray-500">
+      <p>No transactions yet. Connect a bank account to see your transaction history.</p>
+    </div>
+  <% end %>
+</div>
+
+<!-- app/views/bank_connections/index.html.erb -->
+<div class="mb-8">
+  <div class="flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-900">Bank Connections</h1>
+    <%= link_to "Connect New Account", new_bank_connection_path, class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+  </div>
+</div>
+
+<% if @bank_connections.any? %>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <% @bank_connections.each do |connection| %>
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900"><%= connection.bank_name %></h3>
+            <p class="text-sm text-gray-600">**** **** **** <%= connection.account_number.last(4) %></p>
+            <p class="text-xs text-gray-500"><%= connection.account_name %></p>
+          </div>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <%= connection.status == 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' %>">
+            <%= connection.status.humanize %>
+          </span>
+        </div>
+        
+        <% if connection.latest_balance %>
+          <div class="mb-4">
+            <p class="text-2xl font-bold text-gray-900">
+              ₦<%= number_with_delimiter(connection.latest_balance.current_balance) %>
+            </p>
+            <p class="text-xs text-gray-500">
+              Updated <%= time_ago_in_words(connection.latest_balance.balance_date) %> ago
+            </p>
+          </div>
+        <% end %>
+        
+        <div class="flex space-x-2">
+          <%= link_to "View Details", connection, class: "flex-1 text-center px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50" %>
+          <%= link_to "Sync", sync_bank_connection_path(connection), method: :post, class: "flex-1 text-center px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700" %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% else %>
+  <div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No bank accounts connected</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by connecting your first bank account.</p>
+    <div class="mt-6">
+      <%= link_to "Connect Bank Account", new_bank_connection_path, class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+    </div>
+  </div>
+<% end %>

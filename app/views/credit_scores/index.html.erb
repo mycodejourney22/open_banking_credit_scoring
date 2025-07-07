@@ -1,0 +1,82 @@
+<div class="mb-8">
+  <div class="flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-900">Credit Score</h1>
+    <% if @latest_score %>
+      <%= link_to "Recalculate Score", calculate_credit_scores_path, method: :post, class: "inline-flex items-center px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50" %>
+    <% end %>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Main Score Display -->
+  <div class="lg:col-span-2">
+    <%= render 'shared/credit_score_card', credit_score: @latest_score %>
+    
+    <% if @latest_score %>
+      <!-- Score Breakdown -->
+      <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Score Breakdown</h3>
+        
+        <% @latest_score.score_breakdown.each do |factor, score| %>
+          <div class="mb-4">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-sm font-medium text-gray-700"><%= factor.humanize %></span>
+              <span class="text-sm text-gray-900"><%= score.round(1) %> points</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div class="bg-blue-600 h-2 rounded-full" style="width: <%= [score, 100].min %>%"></div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+      
+      <!-- Risk Factors -->
+      <% if @latest_score.risk_factors.any? %>
+        <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Risk Factors</h3>
+          <ul class="space-y-2">
+            <% @latest_score.risk_factors.each do |risk| %>
+              <li class="flex items-start">
+                <span class="text-red-500 mr-2">⚠</span>
+                <span class="text-sm text-gray-700"><%= risk %></span>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+  
+  <!-- Score History -->
+  <div class="lg:col-span-1">
+    <div class="bg-white rounded-lg shadow-md p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Score History</h3>
+      
+      <% if @score_history.any? %>
+        <div class="mb-4">
+          <%= line_chart @score_history.pluck(:calculated_at, :score), 
+              height: "200px", 
+              min: 300, 
+              max: 850,
+              colors: ["#2563eb"] %>
+        </div>
+        
+        <div class="space-y-2">
+          <% @credit_scores.each do |score| %>
+            <div class="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+              <div>
+                <span class="text-sm font-medium text-gray-900"><%= score.score %></span>
+                <span class="text-xs text-gray-500 ml-1">(<%= score.grade %>)</span>
+              </div>
+              <span class="text-xs text-gray-500">
+                <%= score.calculated_at.strftime("%b %d") %>
+              </span>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <p class="text-sm text-gray-500 text-center py-4">No score history yet</p>
+      <% end %>
+    </div>
+  </div>
+</div>

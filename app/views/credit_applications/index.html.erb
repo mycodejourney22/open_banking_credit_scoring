@@ -1,0 +1,142 @@
+<div class="mb-8">
+  <div class="flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-900">Credit Applications</h1>
+    <%= link_to "New Application", new_credit_application_path, class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+  </div>
+</div>
+
+<% if @credit_applications.any? %>
+  <div class="bg-white shadow overflow-hidden sm:rounded-md">
+    <ul class="divide-y divide-gray-200">
+      <% @credit_applications.each do |application| %>
+        <li>
+          <%= link_to application, class: "block hover:bg-gray-50" do %>
+            <div class="px-4 py-4 sm:px-6">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <p class="text-sm font-medium text-blue-600 truncate">
+                    ₦<%= number_with_delimiter(application.requested_amount) %> for <%= application.loan_term_months %> months
+                  </p>
+                  <p class="text-sm text-gray-500">
+                    <%= application.loan_purpose.humanize %>
+                  </p>
+                </div>
+                <div class="text-right">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                    <%= case application.status
+                        when 'approved' then 'bg-green-100 text-green-800'
+                        when 'rejected' then 'bg-red-100 text-red-800'
+                        else 'bg-yellow-100 text-yellow-800'
+                        end %>">
+                    <%= application.status.humanize %>
+                  </span>
+                  <p class="text-xs text-gray-500 mt-1">
+                    <%= application.created_at.strftime("%b %d, %Y") %>
+                  </p>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+<% else %>
+  <div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No applications yet</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by applying for your first credit facility.</p>
+    <div class="mt-6">
+      <%= link_to "Apply Now", new_credit_application_path, class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+    </div>
+  </div>
+<% end %>
+
+<!-- app/views/credit_applications/new.html.erb -->
+<div class="max-w-2xl mx-auto">
+  <div class="mb-8">
+    <h1 class="text-2xl font-bold text-gray-900">Apply for Credit</h1>
+    <p class="text-gray-600">Based on your credit profile, we can offer you personalized credit options</p>
+  </div>
+
+  <!-- Credit Score Summary -->
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-lg font-medium text-blue-900">Your Credit Score</h3>
+        <p class="text-blue-700">Score: <span class="font-semibold"><%= @latest_credit_score.score %> (<%= @latest_credit_score.grade %>)</span></p>
+      </div>
+      <div class="text-right">
+        <p class="text-sm text-blue-700">Maximum Loan Amount</p>
+        <p class="text-xl font-bold text-blue-900">₦<%= number_with_delimiter(@max_loan_amount) %></p>
+      </div>
+    </div>
+  </div>
+
+  <%= simple_form_for @credit_application, html: { class: "space-y-6" } do |f| %>
+    <div class="bg-white shadow rounded-lg p-6">
+      <h3 class="text-lg font-medium text-gray-900 mb-4">Application Details</h3>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <%= f.input :requested_amount,
+              label: "Loan Amount (₦)",
+              input_html: { 
+                class: "mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500",
+                max: @max_loan_amount,
+                min: 10000,
+                step: 1000
+              } %>
+          <p class="text-xs text-gray-500 mt-1">Maximum: ₦<%= number_with_delimiter(@max_loan_amount) %></p>
+        </div>
+
+        <div>
+          <%= f.input :loan_term_months,
+              label: "Loan Term (Months)",
+              collection: [6, 12, 18, 24, 36, 48, 60],
+              input_html: { class: "mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" } %>
+        </div>
+      </div>
+
+      <div class="mt-6">
+        <%= f.input :loan_purpose,
+            label: "Purpose of Loan",
+            collection: [
+              ['Business Investment', 'business'],
+              ['Personal Use', 'personal'],
+              ['Education', 'education'],
+              ['Medical Emergency', 'medical'],
+              ['Home Improvement', 'home'],
+              ['Debt Consolidation', 'debt_consolidation'],
+              ['Other', 'other']
+            ],
+            input_html: { class: "mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" } %>
+      </div>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+      <h3 class="text-lg font-medium text-gray-900 mb-4">Terms and Conditions</h3>
+      
+      <div class="bg-gray-50 rounded-md p-4 mb-4">
+        <ul class="text-sm text-gray-700 space-y-2">
+          <li>• Interest rates are determined based on your credit score</li>
+          <li>• Loan approval is subject to final verification</li>
+          <li>• Early repayment options are available</li>
+          <li>• No hidden fees or charges</li>
+        </ul>
+      </div>
+
+      <label class="flex items-center">
+        <input type="checkbox" required class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+        <span class="ml-2 text-sm text-gray-700">I agree to the terms and conditions</span>
+      </label>
+    </div>
+
+    <div class="flex justify-between">
+      <%= link_to "Cancel", credit_applications_path, class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" %>
+      <%= f.submit "Submit Application", class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+    </div>
+  <% end %>
+</div>
