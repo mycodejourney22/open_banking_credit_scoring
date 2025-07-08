@@ -1,56 +1,55 @@
+# app/models/credit_score.rb
 class CreditScore < ApplicationRecord
   belongs_to :user
-  has_many :credit_applications
-
+  
   validates :score, presence: true, inclusion: { in: 300..850 }
-  validates :grade, presence: true, inclusion: { in: %w[A+ A B+ B C+ C D E] }
-
-  before_save :set_grade_from_score
-
-  scope :recent, -> { order(calculated_at: :desc) }
-
+  validates :risk_level, presence: true
+  
+  enum risk_level: {
+    excellent: 'Excellent',
+    good: 'Good', 
+    fair: 'Fair',
+    poor: 'Poor',
+    very_poor: 'Very Poor'
+  }
+  
+  scope :recent, -> { order(created_at: :desc) }
+  scope :last_6_months, -> { where('created_at >= ?', 6.months.ago) }
+  
   def self.calculate_for_user(user)
-    CreditScoringService.new(user).calculate
+    analysis_service = CreditAnalysisService.new(user)
+    report = analysis_service.generate_credit_report
+    
+    create!(
+      user: user,
+      score: report[:overall_score],
+      risk_level: report[:risk_level],
+      analysis_data: report[:analysis],
+      recommendations: report[:recommendations],
+      loan_eligibility: report[:loan_eligibility],
+      calculated_at: report[:generated_at]
+    )
   end
-
-  def excellent?
-    score >= 750
-  end
-
-  def good?
-    score >= 650
-  end
-
-  def fair?
-    score >= 550
-  end
-
-  def poor?
-    score < 550
-  end
-
-  def risk_level
-    case score
-    when 750..850 then 'Low Risk'
-    when 650..749 then 'Medium-Low Risk'
-    when 550..649 then 'Medium Risk'
-    when 450..549 then 'Medium-High Risk'
-    else 'High Risk'
+  
+  def score_color
+    case risk_level
+    when 'excellent' then 'text-green-600'
+    when 'good' then 'text-blue-600'
+    when 'fair' then 'text-yellow-600'
+    when 'poor' then 'text-orange-600'
+    when 'very_poor' then 'text-red-600'
+    else 'text-gray-600'
     end
   end
-
-  private
-
-  def set_grade_from_score
-    self.grade = case score
-                 when 800..850 then 'A+'
-                 when 750..799 then 'A'
-                 when 700..749 then 'B+'
-                 when 650..699 then 'B'
-                 when 600..649 then 'C+'
-                 when 550..599 then 'C'
-                 when 500..549 then 'D'
-                 else 'E'
-                 end
+  
+  def score_description
+    case score
+    when 750..850 then 'Excellent credit. You qualify for the best rates and terms.'
+    when 700..749 then 'Good credit. You qualify for favorable rates and terms.'
+    when 650..699 then 'Fair credit. You may qualify with higher rates.'
+    when 600..649 then 'Poor credit. Limited options with high rates.'
+    else 'Very poor credit. Focus on improving your financial habits.'
+    end
   end
 end
+

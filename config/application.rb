@@ -32,5 +32,16 @@ module OpenBankingCreditScoring
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
+    config.autoload_paths += %W(#{config.root}/app/jobs)
+
+    config.middleware.insert_before 0, Rack::Cors do
+      allow do
+        origins '*' # Configure appropriately for production
+        resource '/api/*', 
+          headers: :any,
+          methods: [:get, :post, :put, :patch, :delete, :options, :head],
+          credentials: false
+      end
+    end
   end
 end

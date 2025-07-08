@@ -9,7 +9,16 @@
   
     def show
     end
-  
+
+    def edit
+    end
+
+    def update
+    end
+
+    def destroy
+    end
+    
     def new
       @credit_application = current_user.credit_applications.build
       @latest_credit_score = current_user.latest_credit_score

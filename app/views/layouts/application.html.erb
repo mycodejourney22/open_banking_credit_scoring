@@ -1,4 +1,3 @@
-<!-- app/views/layouts/application.html.erb -->
 <!DOCTYPE html>
 <html>
   <head>
@@ -6,62 +5,327 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
-    <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
     
     <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
     
-    <!-- Chart.js for visualizations -->
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for charts (if using chartkick) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
 
   <body class="bg-gray-50">
-    <nav class="bg-white shadow-lg">
-      <div class="max-w-7xl mx-auto px-4">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
-            <%= link_to "Credit Score", root_path, class: "text-xl font-bold text-blue-600" %>
+            <%= link_to "Open Banking", root_path, class: "text-xl font-bold text-blue-600" %>
           </div>
           
-          <% if user_signed_in? %>
-            <div class="flex items-center space-x-4">
-              <%= link_to "Dashboard", root_path, class: "text-gray-700 hover:text-blue-600" %>
-              <%= link_to "Bank Accounts", bank_connections_path, class: "text-gray-700 hover:text-blue-600" %>
-              <%= link_to "Credit Score", credit_scores_path, class: "text-gray-700 hover:text-blue-600" %>
-              <%= link_to "Applications", credit_applications_path, class: "text-gray-700 hover:text-blue-600" %>
-              
-              <div class="relative" data-controller="dropdown">
-                <button data-action="click->dropdown#toggle" class="flex items-center text-gray-700 hover:text-blue-600">
-                  <%= current_user.full_name %>
-                  <svg class="ml-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-                  </svg>
-                </button>
-                
-                <div data-dropdown-target="menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                  <%= link_to "Profile", edit_user_registration_path, class: "block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" %>
-                  <%= link_to "Sign Out", destroy_user_session_path, method: :delete, class: "block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" %>
-                </div>
-              </div>
-            </div>
-          <% else %>
-            <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-4">
+            <% if user_signed_in? %>
+              <%= link_to "Dashboard", dashboard_path, class: "text-gray-700 hover:text-blue-600" %>
+              <%= link_to "Bank Connections", bank_connections_path, class: "text-gray-700 hover:text-blue-600" %>
+              <%= link_to "Sign Out", destroy_user_session_path, method: :delete, class: "text-gray-700 hover:text-blue-600" %>
+            <% else %>
               <%= link_to "Sign In", new_user_session_path, class: "text-gray-700 hover:text-blue-600" %>
               <%= link_to "Sign Up", new_user_registration_path, class: "bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700" %>
-            </div>
-          <% end %>
+            <% end %>
+          </div>
         </div>
       </div>
     </nav>
-
-    <main class="max-w-7xl mx-auto py-6 px-4">
-      <% flash.each do |type, message| %>
-        <div class="mb-4 p-4 rounded-md <%= type == 'notice' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' %>">
-          <%= message %>
-        </div>
-      <% end %>
-
-      <%= yield %>
+    
+    <!-- Flash Messages -->
+    <% if notice %>
+      <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded relative mx-4 mt-4" role="alert">
+        <span class="block sm:inline"><%= notice %></span>
+      </div>
+    <% end %>
+    
+    <% if alert %>
+      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mx-4 mt-4" role="alert">
+        <span class="block sm:inline"><%= alert %></span>
+      </div>
+    <% end %>
+    
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div class="px-4 py-6 sm:px-0">
+        <%= yield %>
+      </div>
     </main>
+    
+    <!-- Include Open Banking Client Script Inline -->
+    <script>
+// OpenBankingClient class
+class OpenBankingClient {
+  constructor(baseUrl = '') {
+    this.baseUrl = baseUrl;
+    this.pollIntervals = new Map();
+  }
+
+  // Initiate bank connection
+  async connectBank(bankName, accountNumber, includeBillPayments = false) {
+    try {
+      const response = await fetch(`${this.baseUrl}/bank_connections`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.getCSRFToken()
+        },
+        body: JSON.stringify({
+          bank_name: bankName,
+          account_number: accountNumber,
+          include_bill_payments: includeBillPayments
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        // Show consent UI to user
+        this.showConsentFlow(data.data);
+        
+        // Start polling for consent approval
+        this.startConsentPolling(data.data.connection_id);
+        
+        return data.data;
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Failed to initiate bank connection:', error);
+      throw error;
+    }
+  }
+
+  // Show consent flow to user
+  showConsentFlow(consentData) {
+    const modal = document.createElement('div');
+    modal.id = 'consent-flow-modal';
+    modal.innerHTML = `
+      <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div class="mt-3 text-center">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Connect Your Bank Account</h3>
+            <p class="text-sm text-gray-600 mb-4">${consentData.consent_message || 'Please authorize the connection with your bank'}</p>
+            <div class="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+              <p class="text-sm font-medium text-blue-800">Verification Code:</p>
+              <p class="text-lg font-bold text-blue-900">${consentData.user_code}</p>
+              <p class="text-xs text-blue-600 mt-2">Expires in ${Math.floor(consentData.expires_in / 60)} minutes</p>
+            </div>
+            <div class="mb-4">
+              <a href="${consentData.verification_uri}" target="_blank" 
+                 class="inline-flex items-center px-4 py-2 bg-blue-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-blue-700">
+                Open Bank Authorization
+              </a>
+            </div>
+            <div class="polling-status mb-4">
+              <p id="polling-message" class="text-sm text-gray-600">Waiting for authorization...</p>
+              <div class="flex justify-center mt-2">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            </div>
+            <button onclick="this.closest('#consent-flow-modal').remove()" 
+                    class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+  }
+
+  // Poll for consent approval
+  startConsentPolling(connectionId) {
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes with 5-second intervals
+    
+    const pollInterval = setInterval(async () => {
+      attempts++;
+      
+      try {
+        const response = await fetch(`${this.baseUrl}/bank_connections/${connectionId}/poll_status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': this.getCSRFToken()
+          }
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          // Connection established
+          clearInterval(pollInterval);
+          this.onConnectionSuccess(data.data);
+        } else if (data.status === 'pending') {
+          // Still waiting
+          this.updatePollingStatus('Waiting for authorization...', attempts, maxAttempts);
+        } else if (data.status === 'error') {
+          // Error occurred
+          clearInterval(pollInterval);
+          this.onConnectionError(data.message);
+        }
+        
+      } catch (error) {
+        console.error('Polling error:', error);
+        
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          this.onConnectionError('Connection timeout. Please try again.');
+        }
+      }
+      
+      if (attempts >= maxAttempts) {
+        clearInterval(pollInterval);
+        this.onConnectionError('Connection timeout. Please try again.');
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    this.pollIntervals.set(connectionId, pollInterval);
+  }
+
+  // Handle successful connection
+  onConnectionSuccess(connectionData) {
+    const modal = document.querySelector('#consent-flow-modal');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+              <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+                <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 mb-4">Bank Connected Successfully!</h3>
+              <p class="text-sm text-gray-600 mb-6">Your bank account has been connected and data sync is in progress.</p>
+              <button onclick="this.closest('#consent-flow-modal').remove(); window.location.reload()" 
+                      class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Trigger a data refresh
+    this.syncConnection(connectionData.connection_id);
+  }
+
+  // Handle connection error
+  onConnectionError(message) {
+    const modal = document.querySelector('#consent-flow-modal');
+    if (modal) {
+      modal.innerHTML = `
+        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+              <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 mb-4">Connection Failed</h3>
+              <p class="text-sm text-gray-600 mb-6">${message}</p>
+              <button onclick="this.closest('#consent-flow-modal').remove()" 
+                      class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Update polling status
+  updatePollingStatus(message, current, max) {
+    const statusElement = document.getElementById('polling-message');
+    if (statusElement) {
+      statusElement.textContent = `${message} (${current}/${max})`;
+    }
+  }
+
+  // Sync connection data
+  async syncConnection(connectionId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/bank_connections/${connectionId}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.getCSRFToken()
+        }
+      });
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Sync failed:', error);
+      throw error;
+    }
+  }
+
+  // Revoke connection
+  async revokeConnection(connectionId) {
+    if (!confirm('Are you sure you want to disconnect this bank account?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/bank_connections/${connectionId}/revoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.getCSRFToken()
+        }
+      });
+
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        // Refresh the page or update UI
+        window.location.reload();
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Failed to revoke connection:', error);
+      throw error;
+    }
+  }
+
+  // Utility function to get CSRF token
+  getCSRFToken() {
+    const token = document.querySelector('meta[name="csrf-token"]');
+    return token ? token.getAttribute('content') : '';
+  }
+
+  // Cleanup polling intervals
+  cleanup() {
+    this.pollIntervals.forEach(interval => clearInterval(interval));
+    this.pollIntervals.clear();
+  }
+}
+
+// Make OpenBankingClient globally available
+window.OpenBankingClient = OpenBankingClient;
+
+// Initialize a global instance
+window.openBanking = new OpenBankingClient();
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  window.openBanking.cleanup();
+});
+    </script>
   </body>
 </html>

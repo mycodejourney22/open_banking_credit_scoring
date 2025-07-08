@@ -1,0 +1,220 @@
+<div class="mb-8">
+  <div class="flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-900">Bank Connections</h1>
+    <button id="connect-new-account-btn" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+      Connect New Account
+    </button>
+  </div>
+</div>
+
+<% if @bank_connections.any? %>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <% @bank_connections.each do |connection| %>
+      <div class="bg-white rounded-lg shadow-md p-6" data-connection-id="<%= connection.id %>">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900"><%= connection.bank_name %></h3>
+            <p class="text-sm text-gray-600">**** **** **** <%= connection.account_number&.last(4) %></p>
+          </div>
+          <div class="flex flex-col items-end space-y-2">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                         <%= case connection.status
+                             when 'active' then 'bg-green-100 text-green-800'
+                             when 'pending' then 'bg-yellow-100 text-yellow-800'
+                             when 'expired' then 'bg-red-100 text-red-800'
+                             when 'error' then 'bg-red-100 text-red-800'
+                             else 'bg-gray-100 text-gray-800'
+                             end %>">
+              <%= connection.status.humanize %>
+            </span>
+            
+            <% if connection.needs_token_refresh? %>
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                Needs Refresh
+              </span>
+            <% end %>
+          </div>
+        </div>
+        
+        <% latest_balance = connection.account_balances.order(:created_at).last %>
+        <% if latest_balance %>
+          <div class="mb-4">
+            <p class="text-2xl font-bold text-gray-900">
+              ₦<%= number_with_delimiter(latest_balance.current_balance) %>
+            </p>
+            <p class="text-xs text-gray-500">
+              Updated <%= time_ago_in_words(latest_balance.balance_date) %> ago
+            </p>
+          </div>
+        <% end %>
+        
+        <% if connection.status == 'pending' %>
+          <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p class="text-sm text-yellow-800">
+              <% if connection.consent_pending? %>
+                Waiting for bank authorization. 
+                <button class="continue-auth-btn underline" data-connection-id="<%= connection.id %>">
+                  Continue Authorization
+                </button>
+              <% else %>
+                Connection in progress...
+              <% end %>
+            </p>
+          </div>
+        <% elsif connection.status == 'expired' %>
+          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p class="text-sm text-red-800">
+              Connection expired. Please reconnect your account.
+            </p>
+          </div>
+        <% elsif connection.status == 'error' %>
+          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p class="text-sm text-red-800">
+              Connection error: <%= connection.error_message&.truncate(100) %>
+            </p>
+          </div>
+        <% end %>
+        
+        <div class="flex space-x-2">
+          <%= link_to "View Details", connection, class: "flex-1 text-center px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50" %>
+          
+          <% if connection.active? %>
+            <button class="sync-btn flex-1 text-center px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700" 
+                    data-connection-id="<%= connection.id %>">
+              Sync
+            </button>
+          <% elsif connection.needs_token_refresh? %>
+            <button class="refresh-btn flex-1 text-center px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" 
+                    data-connection-id="<%= connection.id %>">
+              Refresh
+            </button>
+          <% end %>
+          
+          <button class="revoke-btn px-3 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700" 
+                  data-connection-id="<%= connection.id %>">
+            Disconnect
+          </button>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% else %>
+  <div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No bank accounts connected</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by connecting your first bank account.</p>
+    <div class="mt-6">
+      <button id="connect-first-account-btn" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+        Connect Bank Account
+      </button>
+    </div>
+  </div>
+<% end %>
+
+<!-- Include the same modal HTML from dashboard here -->
+<div id="bank-connection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+  <!-- Same modal content as above -->
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const openBanking = new OpenBankingClient();
+  
+  // Handle connect new account button
+  document.getElementById('connect-new-account-btn')?.addEventListener('click', function() {
+    document.getElementById('bank-connection-modal').classList.remove('hidden');
+  });
+  
+  // Handle connect first account button
+  document.getElementById('connect-first-account-btn')?.addEventListener('click', function() {
+    document.getElementById('bank-connection-modal').classList.remove('hidden');
+  });
+  
+  // Handle continue authorization buttons
+  document.querySelectorAll('.continue-auth-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const connectionId = this.dataset.connectionId;
+      // Trigger polling for this specific connection
+      openBanking.startConsentPolling(connectionId);
+    });
+  });
+  
+  // Handle sync buttons
+  document.querySelectorAll('.sync-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const connectionId = this.dataset.connectionId;
+      
+      try {
+        this.disabled = true;
+        this.textContent = 'Syncing...';
+        
+        await openBanking.syncConnection(connectionId);
+        
+        // Show success message and reload
+        alert('Account synced successfully');
+        window.location.reload();
+        
+      } catch (error) {
+        alert(`Sync failed: ${error.message}`);
+      } finally {
+        this.disabled = false;
+        this.textContent = 'Sync';
+      }
+    });
+  });
+  
+  // Handle refresh buttons
+  document.querySelectorAll('.refresh-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const connectionId = this.dataset.connectionId;
+      
+      try {
+        this.disabled = true;
+        this.textContent = 'Refreshing...';
+        
+        const response = await fetch(`/bank_connections/${connectionId}/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': openBanking.getCSRFToken()
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          alert('Connection refreshed successfully');
+          window.location.reload();
+        } else {
+          alert(`Refresh failed: ${data.message}`);
+        }
+        
+      } catch (error) {
+        alert(`Refresh failed: ${error.message}`);
+      } finally {
+        this.disabled = false;
+        this.textContent = 'Refresh';
+      }
+    });
+  });
+  
+  // Handle revoke buttons
+  document.querySelectorAll('.revoke-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+      const connectionId = this.dataset.connectionId;
+      
+      if (!confirm('Are you sure you want to disconnect this bank account?')) {
+        return;
+      }
+      
+      try {
+        await openBanking.revokeConnection(connectionId);
+      } catch (error) {
+        alert(`Failed to disconnect: ${error.message}`);
+      }
+    });
+  });
+});
+</script>

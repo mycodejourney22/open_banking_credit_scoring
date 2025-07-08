@@ -30,6 +30,8 @@ gem 'tailwindcss-rails'
 
 gem 'httparty'
 
+gem 'rack-cors'
+
 
 gem 'view_component'
 
