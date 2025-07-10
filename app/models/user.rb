@@ -14,6 +14,8 @@ class User < ApplicationRecord
   # New associations for credit scoring and loans
   has_many :credit_scores, dependent: :destroy
   has_many :loan_applications, dependent: :destroy
+  has_one :financial_profile, dependent: :destroy  
+
   
   # Validations
   validates :first_name, :last_name, presence: true
@@ -49,6 +51,22 @@ class User < ApplicationRecord
                    .maximum('account_balances.current_balance')
                    .values
                    .sum
+  end
+
+  def ensure_financial_profile!
+    return financial_profile if financial_profile.present?
+    
+    create_financial_profile!(
+      average_monthly_income: estimated_monthly_income || 0,
+      average_monthly_expenses: 0,
+      savings_rate: 0,
+      debt_to_income_ratio: 0,
+      expense_volatility: 0,
+      transaction_frequency: transactions.count,
+      spending_categories: {},
+      income_sources: {},
+      profile_updated_at: Time.current
+    )
   end
 
   def active_loan_count

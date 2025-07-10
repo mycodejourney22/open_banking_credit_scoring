@@ -273,17 +273,19 @@ class OpenBankingApiService
         from_date = months_back.months.ago.strftime('%Y-%m-%d')
         to_date = Time.current.strftime('%Y-%m-%d')
         
-        accounts.each do |account|
-          account_number = account['account_number']
+        accounts.each_with_index do |account, index|
+            account_number = account['account_number']
           
           begin
+            sleep(2) if index > 0
+
             # Get account balance
-            balance_data = get_account_balance(account_number)
+            balance_data = get_account_balance_with_retry(account_number)
             account['current_balance'] = balance_data.dig('data', 'current_balance')
             account['available_balance'] = balance_data.dig('data', 'available_balance')
             
             # Get all transactions for this account
-            transactions = get_all_account_transactions(account_number, from_date, to_date)
+            transactions = get_all_account_transactions_with_retry(account_number, from_date, to_date)
             
             # Add account reference to each transaction
             transactions.each { |txn| txn['account_number'] = account_number }
@@ -298,6 +300,39 @@ class OpenBankingApiService
         
         financial_data[:total_transactions] = financial_data[:all_transactions].length
         financial_data
+    end
+
+    def get_account_balance_with_retry(account_number, max_retries = 3)
+        retries = 0
+        begin
+          get_account_balance(account_number)
+        rescue => e
+          retries += 1
+          if retries <= max_retries && e.message.include?('Rate Limit')
+            Rails.logger.info "Rate limited, waiting #{retries * 5} seconds before retry..."
+            sleep(retries * 5) # Exponential backoff
+            retry
+          else
+            raise e
+          end
+        end
+    end
+      
+    def get_all_account_transactions_with_retry(account_number, from_date, to_date, max_retries = 3)
+        retries = 0
+        begin
+          get_all_account_transactions(account_number, from_date, to_date)
+        rescue => e
+          retries += 1
+          if retries <= max_retries && e.message.include?('Rate Limit')
+            Rails.logger.info "Rate limited, waiting #{retries * 5} seconds before retry..."
+            sleep(retries * 5) # Exponential backoff
+            retry
+          else
+            Rails.logger.error "Failed after #{retries} retries: #{e.message}"
+            return [] # Return empty array instead of failing
+          end
+        end
     end
     
     def release_account_hold(account_number, hold_reference, status = 'INACTIVE')
