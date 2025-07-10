@@ -2,111 +2,211 @@
 class DashboardController < ApplicationController
   before_action :authenticate_user!
   
-  # def index
-  #   @bank_connections = current_user.bank_connections.includes(:account_balances, :transactions)
-  #   @latest_credit_score = current_user.credit_scores&.order(created_at: :desc)&.first
-    
-  #   # Calculate total balance from latest account balances
-  #   @total_balance = calculate_total_balance
-    
-  #   # Get recent transactions from all connected accounts
-  #   @recent_transactions = get_recent_transactions
-    
-  #   # Calculate spending data for charts
-  #   @monthly_spending = calculate_monthly_spending
-  #   @spending_by_category = calculate_spending_by_category
-  # end
-
   def index
+    @latest_credit_score = current_user.credit_scores.recent.first
     @bank_connections = current_user.bank_connections.includes(:account_balances, :transactions)
-    @latest_credit_score = current_user.credit_scores&.order(created_at: :desc)&.first
-    
-    # Calculate total balance from latest account balances
     @total_balance = calculate_total_balance
     
-    # Get recent transactions from all connected accounts
+    # Calculate financial metrics
+    @monthly_income = calculate_current_month_income
+    @monthly_spending_current = calculate_current_month_spending
+    @avg_monthly_income = calculate_average_monthly_income
+    @avg_monthly_spending = calculate_average_monthly_spending
+    
+    # Get transaction history
     @recent_transactions = get_recent_transactions
     
-    # Calculate spending data for charts
-    @monthly_spending = calculate_monthly_spending
+    # Calculate trends for charts
+    @monthly_spending_trend = calculate_monthly_spending_trend
+    @monthly_income_trend = calculate_monthly_income_trend
     @spending_by_category = calculate_spending_by_category
-    
-    # Loan application data
-    @active_loan_applications = current_user.loan_applications.active.count
-    @total_loans_disbursed = current_user.loan_applications.where(status: 'disbursed').sum(:amount_approved)
   end
   
   private
   
   def calculate_total_balance
-    total = 0
+    return 0 unless @bank_connections.any?
     
-    @bank_connections.each do |connection|
+    @bank_connections.sum do |connection|
       latest_balance = connection.account_balances.order(:created_at).last
-      total += latest_balance&.current_balance&.to_f || 0
+      latest_balance&.current_balance || 0
+    end
+  end
+  
+  def calculate_current_month_income
+    return 0 unless @bank_connections.any?
+    
+    current_month_start = Date.current.beginning_of_month
+    current_month_end = Date.current.end_of_month
+    
+    Transaction.joins(:bank_connection)
+               .where(bank_connection: { user: current_user })
+               .where(transaction_date: current_month_start..current_month_end)
+               .where('amount > 0') # Credits only
+               .sum(:amount)
+  end
+  
+  def calculate_current_month_spending
+    return 0 unless @bank_connections.any?
+    
+    current_month_start = Date.current.beginning_of_month
+    current_month_end = Date.current.end_of_month
+    
+    Transaction.joins(:bank_connection)
+               .where(bank_connection: { user: current_user })
+               .where(transaction_date: current_month_start..current_month_end)
+               .where('amount < 0') # Debits only
+               .sum('ABS(amount)')
+  end
+  
+  def calculate_average_monthly_income
+    return 0 unless @bank_connections.any?
+    
+    # Calculate for last 6 months
+    months_data = {}
+    6.times do |i|
+      month_start = i.months.ago.beginning_of_month
+      month_end = i.months.ago.end_of_month
+      
+      income = Transaction.joins(:bank_connection)
+                         .where(bank_connection: { user: current_user })
+                         .where(transaction_date: month_start..month_end)
+                         .where('amount > 0')
+                         .sum(:amount)
+      
+      months_data[month_start.strftime('%Y-%m')] = income
     end
     
-    total
+    return 0 if months_data.empty?
+    months_data.values.sum / months_data.length
+  end
+  
+  def calculate_average_monthly_spending
+    return 0 unless @bank_connections.any?
+    
+    # Calculate for last 6 months
+    months_data = {}
+    6.times do |i|
+      month_start = i.months.ago.beginning_of_month
+      month_end = i.months.ago.end_of_month
+      
+      spending = Transaction.joins(:bank_connection)
+                           .where(bank_connection: { user: current_user })
+                           .where(transaction_date: month_start..month_end)
+                           .where('amount < 0')
+                           .sum('ABS(amount)')
+      
+      months_data[month_start.strftime('%Y-%m')] = spending
+    end
+    
+    return 0 if months_data.empty?
+    months_data.values.sum / months_data.length
   end
   
   def get_recent_transactions
-    # Get last 10 transactions across all connections
-    if @bank_connections.any?
-      Transaction.joins(:bank_connection)
-                 .where(bank_connection: { user: current_user })
-                 .order(transaction_date: :desc, created_at: :desc)
-                 .limit(10)
-                 .includes(:bank_connection)
-    else
-      Transaction.none
-    end
+    return Transaction.none unless @bank_connections.any?
+    
+    Transaction.joins(:bank_connection)
+               .where(bank_connection: { user: current_user })
+               .order(transaction_date: :desc, created_at: :desc)
+               .limit(20)
+               .includes(:bank_connection)
   end
   
-  def calculate_monthly_spending
-    # Calculate spending for last 12 months
-    spending_data = {}
+  def calculate_monthly_spending_trend
+    return {} unless @bank_connections.any?
     
-    (0..11).each do |i|
-      date = i.months.ago.beginning_of_month
-      month_spending = Transaction.joins(:bank_connection)
-                                 .where(bank_connection: { user: current_user })
-                                 .where(transaction_date: date.beginning_of_month..date.end_of_month)
-                                 .where('amount < 0') # Only outgoing transactions
-                                 .sum('ABS(amount)') || 0
+    trend_data = {}
+    6.times do |i|
+      month_start = i.months.ago.beginning_of_month
+      month_end = i.months.ago.end_of_month
+      month_label = month_start.strftime('%b %Y')
       
-      spending_data[date.strftime("%b %Y")] = month_spending
+      spending = Transaction.joins(:bank_connection)
+                           .where(bank_connection: { user: current_user })
+                           .where(transaction_date: month_start..month_end)
+                           .where('amount < 0')
+                           .sum('ABS(amount)')
+      
+      trend_data[month_label] = spending
     end
     
-    spending_data
+    # Return in chronological order
+    trend_data.sort.reverse.to_h
+  end
+  
+  def calculate_monthly_income_trend
+    return {} unless @bank_connections.any?
+    
+    trend_data = {}
+    6.times do |i|
+      month_start = i.months.ago.beginning_of_month
+      month_end = i.months.ago.end_of_month
+      month_label = month_start.strftime('%b %Y')
+      
+      income = Transaction.joins(:bank_connection)
+                         .where(bank_connection: { user: current_user })
+                         .where(transaction_date: month_start..month_end)
+                         .where('amount > 0')
+                         .sum(:amount)
+      
+      trend_data[month_label] = income
+    end
+    
+    # Return in chronological order
+    trend_data.sort.reverse.to_h
   end
   
   def calculate_spending_by_category
-    # Group spending by transaction type for last 3 months
     return {} unless @bank_connections.any?
     
-    categories = Transaction.joins(:bank_connection)
-                           .where(bank_connection: { user: current_user })
-                           .where(transaction_date: 3.months.ago..)
-                           .where('amount < 0') # Only outgoing transactions
-                           .group(:transaction_type)
-                           .sum('ABS(amount)')
+    # Get last 3 months of spending transactions
+    three_months_ago = 3.months.ago.beginning_of_month
     
-    # Convert to more readable category names
-    categories.transform_keys do |key|
-      case key&.downcase
-      when 'debit', 'pos', 'web'
-        'Shopping & Purchases'
-      when 'transfer', 'nip'
-        'Transfers'
-      when 'atm'
-        'ATM Withdrawals'
-      when 'fee', 'charge'
-        'Bank Fees'
-      when 'bill_payment'
-        'Bill Payments'
-      else
-        key&.humanize || 'Other'
-      end
+    transactions = Transaction.joins(:bank_connection)
+                             .where(bank_connection: { user: current_user })
+                             .where(transaction_date: three_months_ago..)
+                             .where('amount < 0')
+    
+    # Categorize transactions based on description patterns
+    categories = {}
+    
+    transactions.find_each do |transaction|
+      category = categorize_transaction(transaction)
+      categories[category] ||= 0
+      categories[category] += transaction.amount.abs
+    end
+    
+    # Return top 7 categories
+    categories.sort_by { |_, amount| -amount }.first(7).to_h
+  end
+  
+  def categorize_transaction(transaction)
+    description = (transaction.description || transaction.reference || '').downcase
+    
+    case description
+    when /atm|withdrawal|cash/
+      'ATM Withdrawals'
+    when /transfer|trf|tfr/
+      'Transfers'
+    when /pos|purchase|shop|store|market/
+      'Shopping & Purchases'
+    when /bill|utility|electric|water|internet|phone|cable/
+      'Bills & Utilities'
+    when /fuel|gas|petrol|station/
+      'Fuel & Transportation'
+    when /restaurant|food|eat|cafe|kitchen/
+      'Food & Dining'
+    when /fee|charge|commission|maintenance/
+      'Bank Fees'
+    when /loan|credit|debt|installment/
+      'Loan Payments'
+    when /subscription|netflix|spotify|amazon/
+      'Subscriptions'
+    when /medical|hospital|pharmacy|doctor/
+      'Healthcare'
+    else
+      'Other Expenses'
     end
   end
 end

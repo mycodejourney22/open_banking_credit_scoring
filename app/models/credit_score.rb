@@ -41,6 +41,14 @@ class CreditScore < ApplicationRecord
     else 'text-gray-600'
     end
   end
+
+  def parsed_analysis_data
+    return {} if analysis_data.blank?
+    
+    @parsed_analysis_data ||= JSON.parse(analysis_data).with_indifferent_access
+  rescue JSON::ParserError
+    {}
+  end
   
   def score_description
     case score

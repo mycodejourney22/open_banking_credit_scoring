@@ -43,7 +43,7 @@ class BankConnection < ApplicationRecord
     end
     
     def api_service
-      @api_service ||= OpenBankingApiService.new(encrypted_access_token)
+        @api_service ||= OpenBankingApiService.new(encrypted_access_token)
     end
     
     def revoke_access!
@@ -95,6 +95,137 @@ class BankConnection < ApplicationRecord
         
         false
       end
+    end
+
+    def fetch_fresh_transactions(months_back = 6, save_to_db = false)
+        return { transactions: [], accounts: [], total_count: 0 } unless active?
+        
+        begin
+          financial_data = api_service.get_comprehensive_financial_data(months_back)
+          
+          if save_to_db
+            save_fresh_data_to_db(financial_data)
+          end
+          
+          {
+            transactions: financial_data[:all_transactions],
+            accounts: financial_data[:accounts],
+            total_count: financial_data[:total_transactions],
+            fetched_at: Time.current
+          }
+          
+        rescue OpenBankingApiService::OpenBankingError => e
+          Rails.logger.error "Failed to fetch fresh transactions for connection #{id}: #{e.message}"
+          handle_api_error(e)
+          { transactions: [], accounts: [], total_count: 0, error: e.message }
+        end
+    end
+
+    def has_sufficient_transaction_data?(minimum_required = 10)
+        # First check synced data
+        synced_count = transactions.count
+        return true if synced_count >= minimum_required
+        
+        # If not enough synced data, check what's available via API
+        fresh_data = fetch_fresh_transactions(6, false)
+        fresh_data[:total_count] >= minimum_required
+    end
+
+    def api_transaction_count(months_back = 6)
+        return 0 unless active?
+        
+        begin
+          # Just get the summary without fetching all transactions
+          accounts_response = api_service.get_accounts
+          accounts = accounts_response.dig('data', 'accounts') || []
+          
+          total_count = 0
+          
+          accounts.each do |account|
+            account_number = account['account_number']
+            
+            # Get just the first page to check transaction summary
+            transactions_response = api_service.get_account_transactions(
+              account_number, 
+              months_back.months.ago, 
+              Time.current,
+              1, # page
+              1   # limit (just to get summary)
+            )
+            
+            summary = transactions_response.dig('data', 'summary')
+            if summary
+              # Use the total count from summary
+              total_count += (summary['total_debit_count'] || 0) + (summary['total_credit_count'] || 0)
+            else
+              # Fallback: get actual transactions count
+              all_transactions = api_service.get_all_account_transactions(
+                account_number, 
+                months_back.months.ago, 
+                Time.current
+              )
+              total_count += all_transactions.length
+            end
+          end
+          
+          total_count
+          
+        rescue OpenBankingApiService::OpenBankingError => e
+          Rails.logger.error "Failed to get API transaction count for connection #{id}: #{e.message}"
+          0
+        end
+    end
+    
+    # Force refresh token and retry operation
+    def refresh_and_retry(&block)
+        begin
+            yield
+        rescue OpenBankingApiService::OpenBankingError => e
+            if e.status_code == 401 && can_refresh_token?
+            Rails.logger.info "Access token expired for connection #{id}, attempting refresh..."
+            
+            if refresh_access_token!
+                Rails.logger.info "Token refreshed successfully, retrying operation..."
+                yield
+            else
+                raise e
+            end
+            else
+            raise e
+            end
+        end
+    end
+
+    def test_api_connection
+        return { success: false, error: 'Connection not active' } unless active?
+        
+        begin
+          refresh_and_retry do
+            accounts_response = api_service.get_accounts
+            accounts = accounts_response.dig('data', 'accounts') || []
+            
+            {
+              success: true,
+              accounts_count: accounts.length,
+              accounts: accounts.map { |a| { number: a['account_number'], name: a['account_name'] } },
+              tested_at: Time.current
+            }
+          end
+          
+        rescue OpenBankingApiService::OpenBankingError => e
+          {
+            success: false,
+            error: e.message,
+            status_code: e.status_code,
+            tested_at: Time.current
+          }
+        rescue => e
+          {
+            success: false,
+            error: "Unexpected error: #{e.message}",
+            tested_at: Time.current
+          }
+        end
     end
     
     def sync_accounts!
@@ -217,5 +348,73 @@ class BankConnection < ApplicationRecord
       end
       
       Rails.logger.error "API Error for connection #{id}: #{error.message}"
+    end
+
+    def save_fresh_data_to_db(financial_data)
+        ActiveRecord::Base.transaction do
+          # Save account balances
+          financial_data[:accounts].each do |account_data|
+            account_balances.create!(
+              account_number: account_data['account_number'],
+              current_balance: account_data['current_balance'],
+              available_balance: account_data['available_balance'],
+              ledger_balance: account_data['ledger_balance'] || account_data['current_balance'],
+              balance_date: Time.current,
+              metadata: account_data
+            )
+          end
+          
+          # Save transactions
+          financial_data[:all_transactions].each do |txn_data|
+            next if transactions.exists?(external_transaction_id: txn_data['id'])
+            
+            transactions.create!(
+              external_transaction_id: txn_data['id'],
+              account_number: txn_data['account_number'],
+              amount: txn_data['amount'].to_f,
+              transaction_type: map_api_transaction_type(txn_data),
+              description: txn_data['narration'] || 'Unknown transaction',
+              reference: txn_data['reference'],
+              transaction_date: parse_api_transaction_date(txn_data),
+              balance_after: txn_data['balance_after'].to_f,
+              metadata: txn_data
+            )
+          end
+          
+          update!(last_synced_at: Time.current)
+        end
+      end
+      
+      def map_api_transaction_type(txn_data)
+        case txn_data['transaction_type']&.upcase
+        when 'WITHDRAWAL', 'DEBIT'
+          'debit'
+        when 'DEPOSIT', 'CREDIT'
+          'credit'  
+        when 'TRANSFER'
+          txn_data['debit_credit'] == 'DEBIT' ? 'transfer_out' : 'transfer_in'
+        else
+          txn_data['debit_credit']&.downcase || 'unknown'
+        end
+      end
+      
+      def parse_api_transaction_date(txn_data)
+        date_string = txn_data['transaction_time'] || txn_data['value_date']
+        return Date.current unless date_string
+        
+        begin
+          if date_string.include?('T')
+            DateTime.parse(date_string).to_date
+          else
+            Date.parse(date_string)
+          end
+        rescue
+          Date.current
+        end
+      end
+      
+      def can_refresh_token?
+        encrypted_refresh_token.present? && 
+        (token_expires_at.nil? || token_expires_at > 1.hour.from_now)
     end
 end

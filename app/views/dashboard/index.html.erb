@@ -4,74 +4,239 @@
   <p class="text-gray-600">Welcome back, <%= current_user.first_name %>!</p>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
   <!-- Credit Score Card -->
-  <div class="lg:col-span-1">
-    <%= render 'shared/credit_score_card', credit_score: @latest_credit_score %>
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">Credit Score</h3>
+    <% if @latest_credit_score %>
+      <div class="text-3xl font-bold <%= @latest_credit_score.score_color %> mb-2">
+        <%= @latest_credit_score.score %>
+      </div>
+      <p class="text-sm text-gray-600">
+        <%= @latest_credit_score.risk_level.humanize %>
+      </p>
+      <%= link_to "View Details", @latest_credit_score, class: "mt-3 block text-sm text-blue-600 hover:text-blue-800" %>
+    <% else %>
+      <div class="text-center py-4">
+        <p class="text-gray-500 mb-3">No credit score yet</p>
+        <%= link_to "Calculate Score", calculate_credit_scores_path, method: :post, 
+                   class: "inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700" %>
+      </div>
+    <% end %>
   </div>
   
   <!-- Total Balance Card -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Balance</h3>
-    <div class="text-3xl font-bold text-green-600">
+    <div class="text-3xl font-bold text-green-600 mb-2">
       ₦<%= number_with_delimiter(@total_balance) %>
     </div>
-    <p class="text-sm text-gray-600 mt-1">
+    <p class="text-sm text-gray-600">
       Across <%= pluralize(@bank_connections.count, 'account') %>
     </p>
   </div>
   
-  <!-- Quick Actions Card -->
+  <!-- Monthly Income -->
   <div class="bg-white rounded-lg shadow-md p-6">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-    <div class="space-y-2">
-      <button onclick="openBankConnectionModal()" class="block w-full text-center px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50">
-        Connect Bank Account
-      </button>
-      <%= link_to "Apply for Credit", new_credit_application_path, class: "block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" %>
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">Monthly Income</h3>
+    <div class="text-3xl font-bold text-blue-600 mb-2">
+      ₦<%= number_with_delimiter(@monthly_income) %>
     </div>
+    <p class="text-sm text-gray-600">
+      This month's credits
+    </p>
+  </div>
+  
+  <!-- Monthly Spending -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">Monthly Spending</h3>
+    <div class="text-3xl font-bold text-red-600 mb-2">
+      ₦<%= number_with_delimiter(@monthly_spending_current) %>
+    </div>
+    <p class="text-sm text-gray-600">
+      This month's expenses
+    </p>
   </div>
 </div>
 
+<!-- Account Balances Section -->
+<% if @bank_connections.any? %>
+<div class="mb-8">
+  <h2 class="text-xl font-bold text-gray-900 mb-4">Account Balances</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <% @bank_connections.each do |connection| %>
+      <% latest_balance = connection.account_balances.order(:created_at).last %>
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900"><%= connection.bank_name %></h3>
+            <p class="text-sm text-gray-600">**** <%= connection.account_number&.last(4) || '****' %></p>
+          </div>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                       <%= case connection.status
+                           when 'active' then 'bg-green-100 text-green-800'
+                           when 'pending' then 'bg-yellow-100 text-yellow-800'
+                           when 'expired' then 'bg-red-100 text-red-800'
+                           when 'error' then 'bg-red-100 text-red-800'
+                           else 'bg-gray-100 text-gray-800'
+                           end %>">
+            <%= connection.status.humanize %>
+          </span>
+        </div>
+        
+        <% if latest_balance %>
+          <div class="mb-4">
+            <p class="text-2xl font-bold text-gray-900 mb-1">
+              ₦<%= number_with_delimiter(latest_balance.current_balance) %>
+            </p>
+            <% if latest_balance.available_balance && latest_balance.available_balance != latest_balance.current_balance %>
+              <p class="text-sm text-gray-600">
+                Available: ₦<%= number_with_delimiter(latest_balance.available_balance) %>
+              </p>
+            <% end %>
+            <p class="text-xs text-gray-500 mt-2">
+              Updated <%= time_ago_in_words(latest_balance.balance_date) %> ago
+            </p>
+          </div>
+        <% else %>
+          <div class="mb-4">
+            <p class="text-gray-500">No balance data available</p>
+          </div>
+        <% end %>
+        
+        <div class="text-center">
+          <%= link_to "View Details", connection, class: "text-sm text-blue-600 hover:text-blue-800" %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+<% end %>
+
 <!-- Charts Section -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-  <!-- Spending Trend Chart -->
+  <!-- Monthly Spending Trend Chart -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Monthly Spending Trend</h3>
-    <%= line_chart @monthly_spending, prefix: "₦", thousands: "," %>
+    <% if @monthly_spending_trend.any? %>
+      <div class="h-64">
+        <canvas id="spendingTrendChart"></canvas>
+      </div>
+    <% else %>
+      <div class="h-64 flex items-center justify-center text-gray-500">
+        <div class="text-center">
+          <p>No spending data available</p>
+          <p class="text-sm">Connect bank accounts to see trends</p>
+        </div>
+      </div>
+    <% end %>
   </div>
   
   <!-- Spending by Category Chart -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Spending by Category</h3>
-    <%= pie_chart @spending_by_category, prefix: "₦", thousands: "," %>
+    <% if @spending_by_category.any? %>
+      <div class="h-64">
+        <canvas id="categoryChart"></canvas>
+      </div>
+    <% else %>
+      <div class="h-64 flex items-center justify-center text-gray-500">
+        <div class="text-center">
+          <p>No category data available</p>
+          <p class="text-sm">Transaction history needed for analysis</p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<!-- Income vs Spending Comparison -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <!-- Monthly Income Trend -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Monthly Income Trend</h3>
+    <% if @monthly_income_trend.any? %>
+      <div class="h-64">
+        <canvas id="incomeTrendChart"></canvas>
+      </div>
+    <% else %>
+      <div class="h-64 flex items-center justify-center text-gray-500">
+        <div class="text-center">
+          <p>No income data available</p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+  
+  <!-- Financial Summary -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Financial Summary</h3>
+    <div class="space-y-4">
+      <div class="flex justify-between items-center">
+        <span class="text-gray-600">Average Monthly Income</span>
+        <span class="font-semibold text-green-600">₦<%= number_with_delimiter(@avg_monthly_income) %></span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-gray-600">Average Monthly Spending</span>
+        <span class="font-semibold text-red-600">₦<%= number_with_delimiter(@avg_monthly_spending) %></span>
+      </div>
+      <div class="flex justify-between items-center border-t pt-2">
+        <span class="text-gray-600">Net Cash Flow</span>
+        <span class="font-semibold <%= (@avg_monthly_income - @avg_monthly_spending) >= 0 ? 'text-green-600' : 'text-red-600' %>">
+          ₦<%= number_with_delimiter(@avg_monthly_income - @avg_monthly_spending) %>
+        </span>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-gray-600">Savings Rate</span>
+        <span class="font-semibold">
+          <%= @avg_monthly_income > 0 ? (((@avg_monthly_income - @avg_monthly_spending) / @avg_monthly_income) * 100).round(1) : 0 %>%
+        </span>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- Recent Transactions -->
-<div class="bg-white rounded-lg shadow-md">
+<div class="bg-white rounded-lg shadow-md mb-8">
   <div class="px-6 py-4 border-b border-gray-200">
-    <h3 class="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+    <div class="flex justify-between items-center">
+      <h3 class="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+      <%= link_to "View All", bank_connections_path, class: "text-sm text-blue-600 hover:text-blue-800" %>
+    </div>
   </div>
   
   <% if @recent_transactions.any? %>
     <div class="divide-y divide-gray-200">
-      <% @recent_transactions.each do |transaction| %>
+      <% @recent_transactions.first(10).each do |transaction| %>
         <div class="px-6 py-4">
           <div class="flex items-center justify-between">
             <div class="flex-1">
               <p class="text-sm font-medium text-gray-900">
-                <%= transaction.description %>
+                <%= transaction.description.presence || transaction.reference %>
               </p>
-              <p class="text-xs text-gray-500">
-                <%= transaction.transaction_date.strftime("%B %d, %Y") %> • 
-                <%= transaction.transaction_type.humanize %>
-              </p>
+              <div class="flex items-center space-x-4 mt-1">
+                <p class="text-xs text-gray-500">
+                  <%= transaction.transaction_date.strftime("%B %d, %Y") %>
+                </p>
+                <p class="text-xs text-gray-500">
+                  <%= transaction.transaction_type.humanize %>
+                </p>
+                <% if transaction.bank_connection %>
+                  <p class="text-xs text-gray-500">
+                    <%= transaction.bank_connection.bank_name %>
+                  </p>
+                <% end %>
+              </div>
             </div>
             <div class="text-right">
-              <p class="text-sm font-medium <%= transaction.amount > 0 ? 'text-green-600' : 'text-red-600' %>">
-                <%= transaction.amount > 0 ? '+' : '' %>₦<%= number_with_delimiter(transaction.amount.abs) %>
+              <p class="text-sm font-medium <%= transaction.amount >= 0 ? 'text-green-600' : 'text-red-600' %>">
+                <%= transaction.amount >= 0 ? '+' : '' %>₦<%= number_with_delimiter(transaction.amount.abs) %>
               </p>
+              <% if transaction.balance_after %>
+                <p class="text-xs text-gray-500">
+                  Balance: ₦<%= number_with_delimiter(transaction.balance_after) %>
+                </p>
+              <% end %>
             </div>
           </div>
         </div>
@@ -83,220 +248,181 @@
     </div>
   <% else %>
     <div class="px-6 py-8 text-center text-gray-500">
-      <p>No transactions yet. Connect a bank account to see your transaction history.</p>
+      <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+      <p class="text-lg font-medium mb-2">No transactions yet</p>
+      <p>Connect a bank account to see your transaction history.</p>
+      <button onclick="openBankConnectionModal()" class="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+        Connect Bank Account
+      </button>
     </div>
   <% end %>
 </div>
 
-<!-- Include Bank Connection Modal -->
-<%= render 'shared/bank_connection_modal' %>
-
-<!-- app/views/bank_connections/index.html.erb -->
-<div class="mb-8">
-  <div class="flex justify-between items-center">
-    <h1 class="text-2xl font-bold text-gray-900">Bank Connections</h1>
-    <button onclick="openBankConnectionModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-      Connect New Account
+<!-- Quick Actions -->
+<div class="bg-white rounded-lg shadow-md p-6">
+  <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <button onclick="openBankConnectionModal()" class="flex flex-col items-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50">
+      <svg class="h-8 w-8 text-blue-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      </svg>
+      <span class="text-sm font-medium">Connect Account</span>
     </button>
+    
+    <%= link_to calculate_credit_scores_path, method: :post, class: "flex flex-col items-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50" do %>
+      <svg class="h-8 w-8 text-green-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+      <span class="text-sm font-medium">Calculate Score</span>
+    <% end %>
+    
+    <%= link_to new_loan_application_path, class: "flex flex-col items-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50" do %>
+      <svg class="h-8 w-8 text-purple-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+      </svg>
+      <span class="text-sm font-medium">Apply for Loan</span>
+    <% end %>
+    
+    <%= link_to bank_connections_path, class: "flex flex-col items-center p-4 border border-gray-300 rounded-lg hover:bg-gray-50" do %>
+      <svg class="h-8 w-8 text-orange-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+      <span class="text-sm font-medium">Manage Accounts</span>
+    <% end %>
   </div>
 </div>
 
-<% if @bank_connections.any? %>
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    <% @bank_connections.each do |connection| %>
-      <div class="bg-white rounded-lg shadow-md p-6" data-connection-id="<%= connection.id %>">
-        <div class="flex justify-between items-start mb-4">
-          <div>
-            <h3 class="text-lg font-semibold text-gray-900"><%= connection.bank_name %></h3>
-            <p class="text-sm text-gray-600">**** **** **** <%= connection.account_number&.last(4) %></p>
-          </div>
-          <div class="flex flex-col items-end space-y-2">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                         <%= case connection.status
-                             when 'active' then 'bg-green-100 text-green-800'
-                             when 'pending' then 'bg-yellow-100 text-yellow-800'
-                             when 'expired' then 'bg-red-100 text-red-800'
-                             when 'error' then 'bg-red-100 text-red-800'
-                             else 'bg-gray-100 text-gray-800'
-                             end %>">
-              <%= connection.status.humanize %>
-            </span>
-            
-            <% if connection.needs_token_refresh? %>
-              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                Needs Refresh
-              </span>
-            <% end %>
-          </div>
-        </div>
-        
-        <% latest_balance = connection.account_balances.order(:created_at).last %>
-        <% if latest_balance %>
-          <div class="mb-4">
-            <p class="text-2xl font-bold text-gray-900">
-              ₦<%= number_with_delimiter(latest_balance.current_balance) %>
-            </p>
-            <p class="text-xs text-gray-500">
-              Updated <%= time_ago_in_words(latest_balance.balance_date) %> ago
-            </p>
-          </div>
-        <% end %>
-        
-        <% if connection.status == 'pending' %>
-          <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p class="text-sm text-yellow-800">
-              <% if connection.consent_pending? %>
-                Waiting for bank authorization. 
-                <button class="continue-auth-btn underline" data-connection-id="<%= connection.id %>">
-                  Continue Authorization
-                </button>
-              <% else %>
-                Connection in progress...
-              <% end %>
-            </p>
-          </div>
-        <% elsif connection.status == 'expired' %>
-          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p class="text-sm text-red-800">
-              Connection expired. Please reconnect your account.
-            </p>
-          </div>
-        <% elsif connection.status == 'error' %>
-          <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p class="text-sm text-red-800">
-              Connection error: <%= connection.error_message&.truncate(100) %>
-            </p>
-          </div>
-        <% end %>
-        
-        <div class="flex space-x-2">
-          <%= link_to "View Details", connection, class: "flex-1 text-center px-3 py-1 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50" %>
-          
-          <% if connection.active? %>
-            <button class="sync-btn flex-1 text-center px-3 py-1 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700" 
-                    data-connection-id="<%= connection.id %>">
-              Sync
-            </button>
-          <% elsif connection.needs_token_refresh? %>
-            <button class="refresh-btn flex-1 text-center px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" 
-                    data-connection-id="<%= connection.id %>">
-              Refresh
-            </button>
-          <% end %>
-          
-          <button class="revoke-btn px-3 py-1 bg-red-600 text-white rounded-md text-sm hover:bg-red-700" 
-                  data-connection-id="<%= connection.id %>">
-            Disconnect
-          </button>
-        </div>
-      </div>
-    <% end %>
-  </div>
-<% else %>
-  <div class="text-center py-12">
-    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-    </svg>
-    <h3 class="mt-2 text-sm font-medium text-gray-900">No bank accounts connected</h3>
-    <p class="mt-1 text-sm text-gray-500">Get started by connecting your first bank account.</p>
-    <div class="mt-6">
-      <button onclick="openBankConnectionModal()" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-        Connect Bank Account
-      </button>
-    </div>
-  </div>
-<% end %>
-
 <!-- Include Bank Connection Modal -->
 <%= render 'shared/bank_connection_modal' %>
 
+<!-- Chart.js for visualizations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const openBanking = new OpenBankingClient();
-  
-  // Handle continue authorization buttons
-  document.querySelectorAll('.continue-auth-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      const connectionId = this.dataset.connectionId;
-      // Trigger polling for this specific connection
-      openBanking.startConsentPolling(connectionId);
-    });
-  });
-  
-  // Handle sync buttons
-  document.querySelectorAll('.sync-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-      const connectionId = this.dataset.connectionId;
-      
-      try {
-        this.disabled = true;
-        this.textContent = 'Syncing...';
-        
-        await openBanking.syncConnection(connectionId);
-        
-        // Show success message and reload
-        alert('Account synced successfully');
-        window.location.reload();
-        
-      } catch (error) {
-        alert(`Sync failed: ${error.message}`);
-      } finally {
-        this.disabled = false;
-        this.textContent = 'Sync';
-      }
-    });
-  });
-  
-  // Handle refresh buttons
-  document.querySelectorAll('.refresh-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-      const connectionId = this.dataset.connectionId;
-      
-      try {
-        this.disabled = true;
-        this.textContent = 'Refreshing...';
-        
-        const response = await fetch(`/bank_connections/${connectionId}/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': openBanking.getCSRFToken()
+  // Monthly Spending Trend Chart
+  <% if @monthly_spending_trend.any? %>
+  const spendingCtx = document.getElementById('spendingTrendChart');
+  if (spendingCtx) {
+    new Chart(spendingCtx, {
+      type: 'line',
+      data: {
+        labels: <%= @monthly_spending_trend.keys.to_json.html_safe %>,
+        datasets: [{
+          label: 'Monthly Spending',
+          data: <%= @monthly_spending_trend.values.to_json.html_safe %>,
+          borderColor: 'rgb(239, 68, 68)',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return '₦' + value.toLocaleString();
+              }
+            }
           }
-        });
-        
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-          alert('Connection refreshed successfully');
-          window.location.reload();
-        } else {
-          alert(`Refresh failed: ${data.message}`);
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Spending: ₦' + context.parsed.y.toLocaleString();
+              }
+            }
+          }
         }
-        
-      } catch (error) {
-        alert(`Refresh failed: ${error.message}`);
-      } finally {
-        this.disabled = false;
-        this.textContent = 'Refresh';
       }
     });
-  });
-  
-  // Handle revoke buttons
-  document.querySelectorAll('.revoke-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-      const connectionId = this.dataset.connectionId;
-      
-      if (!confirm('Are you sure you want to disconnect this bank account?')) {
-        return;
-      }
-      
-      try {
-        await openBanking.revokeConnection(connectionId);
-      } catch (error) {
-        alert(`Failed to disconnect: ${error.message}`);
+  }
+  <% end %>
+
+  // Spending by Category Chart
+  <% if @spending_by_category.any? %>
+  const categoryCtx = document.getElementById('categoryChart');
+  if (categoryCtx) {
+    new Chart(categoryCtx, {
+      type: 'doughnut',
+      data: {
+        labels: <%= @spending_by_category.keys.to_json.html_safe %>,
+        datasets: [{
+          data: <%= @spending_by_category.values.to_json.html_safe %>,
+          backgroundColor: [
+            'rgb(239, 68, 68)',   // Red
+            'rgb(59, 130, 246)',  // Blue
+            'rgb(16, 185, 129)',  // Green
+            'rgb(245, 158, 11)',  // Yellow
+            'rgb(139, 92, 246)',  // Purple
+            'rgb(236, 72, 153)',  // Pink
+            'rgb(14, 165, 233)'   // Light blue
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.label + ': ₦' + context.parsed.toLocaleString();
+              }
+            }
+          }
+        }
       }
     });
-  });
+  }
+  <% end %>
+
+  // Monthly Income Trend Chart
+  <% if @monthly_income_trend.any? %>
+  const incomeCtx = document.getElementById('incomeTrendChart');
+  if (incomeCtx) {
+    new Chart(incomeCtx, {
+      type: 'line',
+      data: {
+        labels: <%= @monthly_income_trend.keys.to_json.html_safe %>,
+        datasets: [{
+          label: 'Monthly Income',
+          data: <%= @monthly_income_trend.values.to_json.html_safe %>,
+          borderColor: 'rgb(16, 185, 129)',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return '₦' + value.toLocaleString();
+              }
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Income: ₦' + context.parsed.y.toLocaleString();
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+  <% end %>
 });
 </script>

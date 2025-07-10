@@ -36,7 +36,7 @@
   <!-- Loan Eligibility -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Loan Eligibility</h3>
-    <% if @credit_score.loan_eligibility['eligible'] %>
+    <% if @credit_score.score >= 550 %>
       <div class="text-green-600 mb-4">
         <svg class="inline h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
@@ -46,23 +46,21 @@
       
       <div class="space-y-3">
         <div>
-          <span class="text-sm text-gray-600">Max Loan Amount:</span>
+          <span class="text-sm text-gray-600">Estimated Max Amount:</span>
           <div class="text-lg font-semibold text-gray-900">
-            ₦<%= number_with_delimiter(@credit_score.loan_eligibility['max_loan_amount']) %>
+            ₦<%= number_with_delimiter((@credit_score.score * 1000).round) %>
           </div>
         </div>
         
         <div>
           <span class="text-sm text-gray-600">Interest Rate Range:</span>
           <div class="text-lg font-semibold text-gray-900">
-            <%= @credit_score.loan_eligibility['interest_rate_range'] %>
-          </div>
-        </div>
-        
-        <div>
-          <span class="text-sm text-gray-600">Available Terms:</span>
-          <div class="text-sm text-gray-700">
-            <%= @credit_score.loan_eligibility['loan_term_options'].join(', ') %>
+            <% case @credit_score.score
+               when 750..850 then %>8-12%
+            <% when 650..749 then %>12-18%
+            <% when 550..649 then %>18-25%
+            <% else %>25%+
+            <% end %>
           </div>
         </div>
       </div>
@@ -84,25 +82,30 @@
   <!-- Quick Stats -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Financial Summary</h3>
+    <% 
+      analysis_data = @credit_score.parsed_analysis_data rescue {}
+      income_analysis = analysis_data['income_analysis'] || {}
+      financial_behavior = analysis_data['financial_behavior'] || {}
+    %>
     <div class="space-y-3">
       <div>
         <span class="text-sm text-gray-600">Monthly Income:</span>
         <div class="text-lg font-semibold text-gray-900">
-          ₦<%= number_with_delimiter(@credit_score.analysis_data.dig('income_analysis', 'average_monthly_income') || 0) %>
+          ₦<%= number_with_delimiter(income_analysis['average_monthly_income'] || 0) %>
         </div>
       </div>
       
       <div>
-        <span class="text-sm text-gray-600">Cash Flow Trend:</span>
-        <div class="text-sm text-gray-700 capitalize">
-          <%= @credit_score.analysis_data.dig('cash_flow_analysis', 'cash_flow_trend') || 'N/A' %>
+        <span class="text-sm text-gray-600">Transaction Count:</span>
+        <div class="text-sm text-gray-700">
+          <%= analysis_data['transaction_count'] || 'N/A' %>
         </div>
       </div>
       
       <div>
-        <span class="text-sm text-gray-600">Account Health:</span>
+        <span class="text-sm text-gray-600">Account Count:</span>
         <div class="text-lg font-semibold text-gray-900">
-          ₦<%= number_with_delimiter(@credit_score.analysis_data.dig('account_health', 'current_total_balance') || 0) %>
+          <%= analysis_data['account_count'] || 0 %>
         </div>
       </div>
     </div>
@@ -114,18 +117,26 @@
   <!-- Income Analysis -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Income Analysis</h3>
-    <% income_analysis = @credit_score.analysis_data['income_analysis'] %>
+    <% 
+      income_analysis = (@credit_score.parsed_analysis_data['income_analysis'] rescue {}) || {}
+    %>
     <div class="space-y-3">
       <div class="flex justify-between">
-        <span class="text-sm text-gray-600">Income Trend:</span>
-        <span class="text-sm font-medium text-gray-900 capitalize">
-          <%= income_analysis['income_trend'] %>
+        <span class="text-sm text-gray-600">Total Credits:</span>
+        <span class="text-sm font-medium text-gray-900">
+          ₦<%= number_with_delimiter(income_analysis['total_credits'] || 0) %>
         </span>
       </div>
       <div class="flex justify-between">
-        <span class="text-sm text-gray-600">Stability Rating:</span>
+        <span class="text-sm text-gray-600">Average Monthly Income:</span>
         <span class="text-sm font-medium text-gray-900">
-          <%= income_analysis['stability_rating'].round(1) %>%
+          ₦<%= number_with_delimiter(income_analysis['average_monthly_income'] || 0) %>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-600">Income Consistency:</span>
+        <span class="text-sm font-medium text-gray-900">
+          <%= ((income_analysis['income_consistency'] || 0) * 100).round(1) %>%
         </span>
       </div>
     </div>
@@ -134,39 +145,119 @@
   <!-- Spending Analysis -->
   <div class="bg-white rounded-lg shadow-md p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Spending Analysis</h3>
-    <% spending_analysis = @credit_score.analysis_data['spending_analysis'] %>
+    <% 
+      spending_analysis = (@credit_score.parsed_analysis_data['spending_analysis'] rescue {}) || {}
+    %>
     <div class="space-y-3">
       <div class="flex justify-between">
-        <span class="text-sm text-gray-600">Monthly Spending:</span>
+        <span class="text-sm text-gray-600">Total Spending:</span>
         <span class="text-sm font-medium text-gray-900">
-          ₦<%= number_with_delimiter(spending_analysis['total_monthly_spending']) %>
+          ₦<%= number_with_delimiter(spending_analysis['total_spending'] || 0) %>
         </span>
       </div>
       <div class="flex justify-between">
-        <span class="text-sm text-gray-600">Largest Category:</span>
+        <span class="text-sm text-gray-600">Monthly Spending:</span>
+        <span class="text-sm font-medium text-gray-900">
+          ₦<%= number_with_delimiter(spending_analysis['average_monthly_spending'] || 0) %>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-600">Spending Consistency:</span>
         <span class="text-sm font-medium text-gray-900 capitalize">
-          <%= spending_analysis['largest_expense_category']&.humanize %>
+          <%= ((spending_analysis['spending_consistency'] || 0) * 100).round(1) %>%
         </span>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Financial Behavior -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <!-- Account Health -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Account Health</h3>
+    <% 
+      financial_behavior = (@credit_score.parsed_analysis_data['financial_behavior'] rescue {}) || {}
+    %>
+    <div class="space-y-3">
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-600">Average Balance:</span>
+        <span class="text-sm font-medium text-gray-900">
+          ₦<%= number_with_delimiter(financial_behavior['average_balance'] || 0) %>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-600">Overdraft Incidents:</span>
+        <span class="text-sm font-medium text-gray-900">
+          <%= financial_behavior['overdraft_incidents'] || 0 %>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-600">Transaction Frequency:</span>
+        <span class="text-sm font-medium text-gray-900">
+          <%= (financial_behavior['transaction_frequency'] || 0).round(1) %>/month
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Risk Factors -->
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Risk Assessment</h3>
+    <% 
+      risk_factors = (@credit_score.parsed_analysis_data['risk_factors'] rescue []) || []
+    %>
+    <div class="space-y-3">
+      <% if risk_factors.any? %>
+        <% risk_factors.each do |risk| %>
+          <div class="flex items-start">
+            <svg class="flex-shrink-0 h-4 w-4 text-red-500 mt-1 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="text-sm text-gray-700"><%= risk %></span>
+          </div>
+        <% end %>
+      <% else %>
+        <p class="text-green-600 text-sm">No significant risk factors identified.</p>
+      <% end %>
+    </div>
+  </div>
+</div>
+
 <!-- Recommendations -->
 <div class="bg-white rounded-lg shadow-md p-6">
-  <h3 class="text-lg font-semibold text-gray-900 mb-4">Recommendations</h3>
-  <% if @credit_score.recommendations.any? %>
-    <ul class="space-y-2">
-      <% @credit_score.recommendations.each do |recommendation| %>
-        <li class="flex items-start">
-          <svg class="flex-shrink-0 h-5 w-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-          </svg>
-          <span class="text-sm text-gray-700"><%= recommendation %></span>
-        </li>
-      <% end %>
-    </ul>
-  <% else %>
-    <p class="text-gray-600">Keep up the good work! Your financial habits are on track.</p>
-  <% end %>
+  <h3 class="text-lg font-semibold text-gray-900 mb-4">Recommendations for Improvement</h3>
+  <div class="space-y-3">
+    <% if @credit_score.score < 600 %>
+      <div class="flex items-start">
+        <svg class="flex-shrink-0 h-5 w-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+        </svg>
+        <span class="text-sm text-gray-700">Maintain positive account balances to avoid overdraft fees</span>
+      </div>
+    <% end %>
+    
+    <% if @credit_score.score < 650 %>
+      <div class="flex items-start">
+        <svg class="flex-shrink-0 h-5 w-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+        </svg>
+        <span class="text-sm text-gray-700">Establish consistent income deposits to improve stability</span>
+      </div>
+    <% end %>
+    
+    <div class="flex items-start">
+      <svg class="flex-shrink-0 h-5 w-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+      </svg>
+      <span class="text-sm text-gray-700">Continue building your financial history through regular transactions</span>
+    </div>
+    
+    <div class="flex items-start">
+      <svg class="flex-shrink-0 h-5 w-5 text-blue-500 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+      </svg>
+      <span class="text-sm text-gray-700">Monitor your spending patterns to improve cash flow management</span>
+    </div>
+  </div>
 </div>
